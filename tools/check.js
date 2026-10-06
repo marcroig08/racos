@@ -21,8 +21,8 @@ function skeleton(html) {
       const n = a[1].toLowerCase();
       if (KEEP.includes(n) || n.startsWith('data-')) attrs[n] = a[2] ?? '';
     }
-    // allowed differences
-    if (tag === 'link' && attrs.rel === undefined) {}
+    // allowed differences: each language has its own canonical URL
+    if (tag === 'link' && /rel="canonical"/.test(m[2])) continue;
     out.push(tag + JSON.stringify(attrs));
   }
   return out;
