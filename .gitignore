@@ -1,0 +1,4 @@
+# Nunca subir la clave de Gemini ni los contadores del chat
+api/_config.php
+api/_data/
+raco-config.php
