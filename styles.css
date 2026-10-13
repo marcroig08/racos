@@ -391,8 +391,9 @@ h2 em.brush--red { color: var(--white); }
 
 .menu {
   position: fixed; inset: 0; z-index: 55;
-  display: flex; flex-direction: column; justify-content: center; gap: 3rem;
+  display: flex; flex-direction: column; justify-content: center; justify-content: safe center; gap: 3rem;
   padding: calc(var(--nav-h) + 2rem) var(--gutter) 2.5rem;
+  overflow-y: auto; overscroll-behavior: contain;   /* landscape phones: menu taller than the screen */
   background: var(--yellow); color: var(--black);
   clip-path: circle(0 at calc(100% - 40px) 36px);
   visibility: hidden;
@@ -914,7 +915,8 @@ h2 em.brush--red { color: var(--white); }
 
 .langgate {
   position: fixed; inset: 0; z-index: 150;
-  display: grid; place-items: center; padding: var(--gutter);
+  display: grid; place-items: center; place-items: safe center; padding: var(--gutter);
+  overflow-y: auto; overscroll-behavior: contain;   /* landscape phones: card taller than the screen */
   background: rgba(21, 18, 15, .55);
   animation: gateIn .5s var(--ease-out);
 }
@@ -1010,6 +1012,7 @@ h2 em.brush--red { color: var(--white); }
 .chat-legal { padding: .5rem 1rem .8rem; font-size: .68rem; line-height: 1.4; color: #5f574c; background: var(--paper); }
 @media (min-width: 960px) {
   .chat { right: 24px; bottom: 24px; }
+  .footer-bottom { padding-right: 250px; }          /* keep the last line clear of the chat button */
   .chat-launcher { padding-right: .3rem; }
   .chat-launcher-text { display: inline; }
   .chat-panel { left: auto; right: 24px; bottom: 96px; width: 390px; height: min(78vh, 620px); }
