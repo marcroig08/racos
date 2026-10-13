@@ -24,13 +24,50 @@ function patchMain(js) {
   return js;
 }
 
-// runs inside each language page: language links → ask the outer page to switch; external links → new tab;
-// #anchor links scroll by hand (a blob: page can't navigate to its own #fragment when opened from a file)
-const CHOSEN = 'window.__racoChosen = false; /*raco-chosen*/';
+// Runs first inside each language page. A blob: page opened from a file has an opaque origin, so:
+// - language links ask the outer page to switch; https links open in a new tab; tel:/mailto: go to the top window
+// - #anchor links scroll by hand (the page can't navigate to its own #fragment)
+// - localStorage/sessionStorage throw → in-memory stand-ins, seeded and saved by the outer page
+// - IntersectionObserver ignores rootMargin without an explicit root → default root to the document
+// SEED is replaced by the outer page with {chosen, local, session} before the page is shown.
+const SEED = 'var SEED = {"chosen":false,"local":{},"session":{}}; /*raco-seed*/';
 const INNER = `<script>
 (function () {
-  ${CHOSEN}
+  ${SEED}
+  window.__racoChosen = SEED.chosen;
   var cur = document.documentElement.getAttribute("data-bundle-lang");
+
+  function standIn(kind, data) {
+    var m = {};
+    for (var k in data) m[k] = String(data[k]);
+    var save = function () { if (kind === "local") { var c = {}; for (var k in m) if (k !== "raco-lang") c[k] = m[k]; m2p(c); } else m2p(m); };
+    var m2p = function (c) { parent.postMessage({ racoStore: kind, data: c }, "*"); };
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
+      setItem: function (k, v) { m[k] = String(v); save(); },
+      removeItem: function (k) { delete m[k]; save(); },
+      clear: function () { m = {}; save(); },
+      key: function (i) { return Object.keys(m)[i] || null; },
+      get length() { return Object.keys(m).length; }
+    };
+  }
+  [["localStorage", "local"], ["sessionStorage", "session"]].forEach(function (s) {
+    try { window[s[0]].getItem("x"); return; } catch (_) {}
+    try { Object.defineProperty(window, s[0], { value: standIn(s[1], SEED[s[1]] || {}), configurable: true }); } catch (_) {}
+  });
+
+  var IO = window.IntersectionObserver;
+  if (IO) {
+    var RootedIO = function (cb, o) {
+      var c = {}; if (o) for (var k in o) c[k] = o[k];
+      if (!c.root) c.root = document;
+      try { return new IO(cb, c); } catch (_) { return new IO(cb, o); }
+    };
+    RootedIO.prototype = IO.prototype;
+    window.IntersectionObserver = RootedIO;
+  }
+
+  document.addEventListener("DOMContentLoaded", function () { parent.postMessage({ racoTitle: document.title }, "*"); });
   window.addEventListener("click", function (e) {
     if (e.defaultPrevented) return;                    // the page already handled it
     var a = e.target.closest && e.target.closest("a[href^='#']");
@@ -54,6 +91,7 @@ const INNER = `<script>
       return;
     }
     if (/^https?:/i.test(href) && !a.target) { a.target = "_blank"; a.rel = "noopener"; }
+    if (/^(tel|mailto|sms):/i.test(href) && !a.target) a.target = "_top";
   }, true);
 })();
 </script>`;
@@ -94,31 +132,58 @@ const out = `<!doctype html>
 </head>
 <body>
 <iframe id="raco" title="Racó de Canya"></iframe>
+<noscript><p style="font:16px/1.6 system-ui,sans-serif;max-width:32em;margin:20vh auto;padding:0 1.5em;text-align:center;color:#15120f">
+<b>Racó de Canya · propuesta de web</b><br><br>
+Para ver la web, descarga este archivo y ábrelo con un navegador (Chrome, Safari, Edge o Firefox).<br><br>
+Per a veure la web, descarrega este arxiu i obri'l amb un navegador.<br><br>
+To view the website, download this file and open it in a web browser.</p></noscript>
 ${data}
 <script>
 (function () {
   var frame = document.getElementById("raco"), url = null, LANGS = ["es", "va", "en"];
   var LANG_ATTR = { es: "es", va: "ca-ES-valencia", en: "en" };
+  // what the page saved (its storage can't be used from inside the frame), kept here
+  var store = { local: {}, session: {} };
+  try { store.local = JSON.parse(localStorage.getItem("raco-store") || "{}") || {}; } catch (_) {}
+  try { store.session = JSON.parse(sessionStorage.getItem("raco-store") || "{}") || {}; } catch (_) {}
   function decode(lang, chosen) {
     var b = atob(document.getElementById("raco-" + lang).textContent);
     var u = new Uint8Array(b.length);
     for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
     var html = new TextDecoder("utf-8").decode(u);
-    if (chosen) html = html.replace(${JSON.stringify(CHOSEN)}, "window.__racoChosen = true;");
+    var seed = JSON.stringify({ chosen: !!chosen, local: store.local, session: store.session }).replace(/</g, "\\\\u003c");
+    html = html.replace(${JSON.stringify(SEED)}, function () { return "var SEED = " + seed + ";"; });
     return new Blob([html], { type: "text/html;charset=utf-8" });
   }
-  function show(lang, chosen) {
-    if (url) URL.revokeObjectURL(url);
+  // swap with location.replace: the frame never gets its own history entries (old blobs are revoked);
+  // language changes are pushed on the outer page instead, so Back returns to the previous language
+  function show(lang, chosen, push) {
+    var old = url;
     url = URL.createObjectURL(decode(lang, chosen));
-    frame.src = url;
+    if (old) { frame.contentWindow.location.replace(url); URL.revokeObjectURL(old); } else frame.src = url;
+    current = lang;
     document.documentElement.lang = LANG_ATTR[lang];
-    try { history.replaceState(null, "", "#" + lang); } catch (_) {}
+    try { history[push ? "pushState" : "replaceState"](null, "", "#" + lang); } catch (_) {}
     try { localStorage.setItem("raco-lang", lang); } catch (_) {}
   }
+  var current = null;
   window.addEventListener("message", function (e) {
-    if (e.source !== frame.contentWindow || !e.data || LANGS.indexOf(e.data.racoLang) < 0) return;
-    show(e.data.racoLang, true);
+    if (e.source !== frame.contentWindow || !e.data) return;
+    var d = e.data;
+    if (typeof d.racoTitle === "string") { document.title = d.racoTitle; return; }
+    if ((d.racoStore === "local" || d.racoStore === "session") && d.data && typeof d.data === "object") {
+      store[d.racoStore] = d.data;
+      try { (d.racoStore === "local" ? localStorage : sessionStorage).setItem("raco-store", JSON.stringify(d.data)); } catch (_) {}
+      return;
+    }
+    if (LANGS.indexOf(d.racoLang) >= 0 && d.racoLang !== current) show(d.racoLang, true, true);
   });
+  window.addEventListener("popstate", function () {
+    var l = location.hash.slice(1);
+    if (LANGS.indexOf(l) >= 0 && l !== current) show(l, true, false);
+  });
+  // keyboard scrolling works straight away, without clicking into the page first
+  frame.addEventListener("load", function () { try { frame.contentWindow.focus(); } catch (_) {} });
   var start = location.hash.slice(1), chosen = LANGS.indexOf(start) >= 0;
   if (!chosen) { try { start = localStorage.getItem("raco-lang"); chosen = LANGS.indexOf(start) >= 0; } catch (_) {} }
   show(chosen ? start : "es", chosen);
