@@ -44,7 +44,10 @@ const INNER = `<script>
     var m2p = function (c) { parent.postMessage({ racoStore: kind, data: c }, "*"); };
     return {
       getItem: function (k) { return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null; },
-      setItem: function (k, v) { m[k] = String(v); save(); },
+      setItem: function (k, v) {
+        m[k] = String(v); save();
+        if (kind === "local" && k === "raco-lang") parent.postMessage({ racoChosen: String(v) }, "*");  // chooser answered
+      },
       removeItem: function (k) { delete m[k]; save(); },
       clear: function () { m = {}; save(); },
       key: function (i) { return Object.keys(m)[i] || null; },
@@ -129,9 +132,9 @@ const out = `<!doctype html>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #fbf8f1; }
   iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #fbf8f1; }
 </style>
+<noscript><style>iframe { display: none; } html, body { overflow: auto; height: auto; }</style></noscript>
 </head>
 <body>
-<iframe id="raco" title="Racó de Canya"></iframe>
 <noscript><p style="font:16px/1.6 system-ui,sans-serif;max-width:32em;margin:20vh auto;padding:0 1.5em;text-align:center;color:#15120f">
 <b>Racó de Canya · propuesta de web</b><br><br>
 Para ver la web, descarga este archivo y ábrelo con un navegador (Chrome, Safari, Edge o Firefox).<br><br>
@@ -140,7 +143,7 @@ To view the website, download this file and open it in a web browser.</p></noscr
 ${data}
 <script>
 (function () {
-  var frame = document.getElementById("raco"), url = null, LANGS = ["es", "va", "en"];
+  var frame = null, url = null, stale = [], current = null, LANGS = ["es", "va", "en"];
   var LANG_ATTR = { es: "es", va: "ca-ES-valencia", en: "en" };
   // what the page saved (its storage can't be used from inside the frame), kept here
   var store = { local: {}, session: {} };
@@ -155,20 +158,33 @@ ${data}
     html = html.replace(${JSON.stringify(SEED)}, function () { return "var SEED = " + seed + ";"; });
     return new Blob([html], { type: "text/html;charset=utf-8" });
   }
-  // swap with location.replace: the frame never gets its own history entries (old blobs are revoked);
-  // language changes are pushed on the outer page instead, so Back returns to the previous language
-  function show(lang, chosen, push) {
-    var old = url;
-    url = URL.createObjectURL(decode(lang, chosen));
-    if (old) { frame.contentWindow.location.replace(url); URL.revokeObjectURL(old); } else frame.src = url;
-    current = lang;
-    document.documentElement.lang = LANG_ATTR[lang];
+  // the language is only written to the address and remembered once the visitor has chosen it
+  function remember(lang, push) {
     try { history[push ? "pushState" : "replaceState"](null, "", "#" + lang); } catch (_) {}
     try { localStorage.setItem("raco-lang", lang); } catch (_) {}
   }
-  var current = null;
+  // every page gets a NEW, uniquely named iframe: the browser can't match it to an old history entry
+  // and reload a dead blob: URL into it. It loads underneath the current page, which is removed once it's ready.
+  function show(lang, chosen, push) {
+    if (url) stale.push(url);
+    url = URL.createObjectURL(decode(lang, chosen));
+    var f = frame = document.createElement("iframe");
+    f.name = "raco-" + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    f.title = "Racó de Canya";
+    f.addEventListener("load", function () {
+      if (f !== frame) return;                       // a newer page is on its way
+      try { f.contentWindow.focus(); } catch (_) {}  // keyboard scrolling works without clicking first
+      [].slice.call(document.getElementsByTagName("iframe")).forEach(function (o) { if (o !== f) o.parentNode.removeChild(o); });
+      while (stale.length) URL.revokeObjectURL(stale.pop());
+    });
+    f.src = url;
+    document.body.insertBefore(f, document.getElementsByTagName("iframe")[0] || null);
+    current = lang;
+    document.documentElement.lang = LANG_ATTR[lang];
+    if (chosen) remember(lang, push);
+  }
   window.addEventListener("message", function (e) {
-    if (e.source !== frame.contentWindow || !e.data) return;
+    if (!frame || e.source !== frame.contentWindow || !e.data) return;
     var d = e.data;
     if (typeof d.racoTitle === "string") { document.title = d.racoTitle; return; }
     if ((d.racoStore === "local" || d.racoStore === "session") && d.data && typeof d.data === "object") {
@@ -176,14 +192,13 @@ ${data}
       try { (d.racoStore === "local" ? localStorage : sessionStorage).setItem("raco-store", JSON.stringify(d.data)); } catch (_) {}
       return;
     }
+    if (d.racoChosen === current) { remember(current, false); return; }
     if (LANGS.indexOf(d.racoLang) >= 0 && d.racoLang !== current) show(d.racoLang, true, true);
   });
   window.addEventListener("popstate", function () {
-    var l = location.hash.slice(1);
+    var l = location.hash.slice(1) || "es";
     if (LANGS.indexOf(l) >= 0 && l !== current) show(l, true, false);
   });
-  // keyboard scrolling works straight away, without clicking into the page first
-  frame.addEventListener("load", function () { try { frame.contentWindow.focus(); } catch (_) {} });
   var start = location.hash.slice(1), chosen = LANGS.indexOf(start) >= 0;
   if (!chosen) { try { start = localStorage.getItem("raco-lang"); chosen = LANGS.indexOf(start) >= 0; } catch (_) {} }
   show(chosen ? start : "es", chosen);

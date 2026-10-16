@@ -211,14 +211,21 @@
           save();
           addBubble("model", r.body.reply);
         } else {
+          forgetUnanswered();
           addBubble("model", (r.body && r.body.error) || TXT.fallback, { error: true });
         }
       })
       .catch(function () {
         clearTimeout(timer);
         setBusy(false);
+        forgetUnanswered();
         addBubble("model", TXT.fallback, { error: true });
       });
+  }
+
+  // a question that got no answer isn't kept, so it doesn't reappear unanswered on the next page
+  function forgetUnanswered() {
+    if (history.length && history[history.length - 1].role === "user") { history.pop(); save(); }
   }
 
   function autoGrow() {

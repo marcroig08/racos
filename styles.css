@@ -358,7 +358,7 @@ h2 em.brush--red { color: var(--white); }
 .nav.is-hidden:not(:focus-within) { transform: translateY(-101%); }
 .nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; }
 .brand { display: inline-flex; align-items: center; gap: .55rem; }
-.brand-mark { width: 30px; height: 30px; transition: transform .8s var(--ease-bounce); }
+.brand-mark { width: 30px; height: 30px; flex: none; transition: transform .8s var(--ease-bounce); }
 .brand:hover .brand-mark { transform: rotate(-10deg) scale(1.12); }
 .brand-name { font: 400 1.6rem/1 var(--serif); letter-spacing: -.01em; }
 .nav-links { display: none; }
@@ -753,6 +753,7 @@ h2 em.brush--red { color: var(--white); }
 .radar-sea { font: 500 11px var(--mono); letter-spacing: .4em; text-transform: uppercase; fill: var(--red-ink); text-anchor: middle; }
 .radar-sweep { transform-origin: 0 0; animation: spin 9s linear infinite; }
 .town { cursor: pointer; }
+.town:focus:not(:focus-visible) { outline: none; }   /* no box after a click or tap */
 .town line { stroke: var(--black); stroke-width: 1.5; stroke-dasharray: 300; stroke-dashoffset: 300; transition: stroke-dashoffset 1s var(--ease-out); }
 .town circle { fill: var(--white); stroke: var(--black); stroke-width: 2.5; transform-box: fill-box; transform-origin: center; transition: transform .5s var(--ease-bounce), fill .3s; }
 .town text { font: 600 13px var(--sans); fill: var(--black); paint-order: stroke; stroke: var(--white); stroke-width: 5px; stroke-linejoin: round; }
@@ -788,6 +789,8 @@ h2 em.brush--red { color: var(--white); }
   font: 600 .56rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
   color: var(--white); background: var(--red); padding: .22rem .45rem; border-radius: 999px;
 }
+html[lang="en"] .drive-list a.is-route::after { content: "Your route"; }
+html[lang^="ca"] .drive-list a.is-route::after { content: "La teua ruta"; }
 .drive-list b { font: 500 .78rem var(--mono); color: var(--red-ink); margin-left: .3rem; }
 
 .reserve-card {
@@ -898,6 +901,12 @@ h2 em.brush--red { color: var(--white); }
 .ready .dock { transform: translateY(140%); opacity: 0; pointer-events: none; visibility: hidden; transition: transform .6s var(--ease-out), opacity .4s, visibility 0s .6s; }
 .ready .dock.is-visible { transform: none; opacity: 1; pointer-events: auto; visibility: visible; transition: transform .6s var(--ease-out), opacity .4s, visibility 0s; }
 .menu-open .dock { visibility: hidden !important; opacity: 0 !important; }
+/* open menu: solid header, so menu links scrolled under it (landscape phones) don't overlap the logo */
+.menu-open .nav, .menu-open .nav.is-scrolled { background: var(--yellow); border-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: transform .6s var(--ease-out), background 0s .25s; }
+/* small screens: keep text clear of the round chat button */
+@media (max-width: 959px) { .footer-bottom { padding-right: 76px; } }
+@media (max-width: 600px) { .hero-drive { padding-right: 72px; } }
+@media (max-width: 380px) { .brand-name { white-space: nowrap; font-size: 1.32rem; } .nav-inner { gap: .75rem; } }
 .footer { padding-bottom: 76px; }
 
 /* ---------- Language switch + first-visit chooser ---------- */
@@ -1012,7 +1021,7 @@ h2 em.brush--red { color: var(--white); }
 .chat-legal { padding: .5rem 1rem .8rem; font-size: .68rem; line-height: 1.4; color: #5f574c; background: var(--paper); }
 @media (min-width: 960px) {
   .chat { right: 24px; bottom: 24px; }
-  .footer-bottom { padding-right: 250px; }          /* keep the last line clear of the chat button */
+  .footer-bottom { padding-right: max(0px, calc(270px - max(var(--gutter), (100vw - var(--max)) / 2))); } /* clear of the chat button */
   .chat-launcher { padding-right: .3rem; }
   .chat-launcher-text { display: inline; }
   .chat-panel { left: auto; right: 24px; bottom: 96px; width: 390px; height: min(78vh, 620px); }
